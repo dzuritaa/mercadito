@@ -1,0 +1,12 @@
+# HTTPS in front of Mercadito. See docs/https.md.
+#
+# SITE_ADDRESS can be:
+#   - a public domain (food.example.com): Caddy gets a free trusted
+#     certificate automatically (ports 80 and 443 must reach this machine);
+#   - a local IP or name (192.168.1.20, localhost): Caddy uses its own local
+#     certificate authority, so browsers warn until you trust it.
+
+{$SITE_ADDRESS} {
+	encode zstd gzip
+	reverse_proxy app:3000
+}

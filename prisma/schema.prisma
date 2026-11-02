@@ -1,0 +1,539 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum InventoryLocation {
+  pantry
+  fridge
+  freezer
+  spices
+  cleaning
+  other
+}
+
+enum InventoryStatus {
+  available
+  used
+  expired
+  discarded
+}
+
+enum InventoryTransactionType {
+  added
+  used
+  adjusted
+  expired
+  discarded
+}
+
+enum InventoryTransactionSource {
+  manual
+  recipe_cooked
+  shopping_list
+  receipt
+  voice
+  system
+}
+
+enum MealPlanStatus {
+  draft
+  approved
+  archived
+}
+
+enum MealPlanItemStatus {
+  suggested
+  approved
+  planned
+  cooked
+  skipped
+  rejected
+}
+
+enum MealType {
+  lunch
+  dinner
+  lunch_and_dinner
+}
+
+enum ShoppingListStatus {
+  draft
+  active
+  completed
+  archived
+}
+
+enum CookedIngredientDeductionStatus {
+  deducted
+  partial
+  manual_review
+}
+
+enum PurchaseType {
+  grocery
+  online_delivery
+  eating_out
+  household
+}
+
+enum UnitSystem {
+  metric
+  imperial
+}
+
+enum BudgetPeriod {
+  weekly
+  monthly
+}
+
+enum MealPattern {
+  shared_lunch_dinner
+  separate_lunch_dinner
+  lunch_only
+  dinner_only
+}
+
+/// One household per installation.
+model Household {
+  id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name              String
+  countryCode       String            @map("country_code")
+  city              String?
+  currency          String
+  defaultLocale     String            @default("es") @map("default_locale")
+  unitSystem        UnitSystem        @default(metric) @map("unit_system")
+  budgetAmount      Decimal?          @map("budget_amount") @db.Decimal(10, 2)
+  budgetPeriod      BudgetPeriod      @default(monthly) @map("budget_period")
+  planDays          Int[]             @default([1, 2, 3, 4, 5]) @map("plan_days")
+  mealPattern       MealPattern       @default(shared_lunch_dinner) @map("meal_pattern")
+  includeVegetarian Boolean           @default(true) @map("include_vegetarian")
+  expiringSoonDays  Int               @default(5) @map("expiring_soon_days")
+  setupCompletedAt  DateTime?         @map("setup_completed_at") @db.Timestamptz(6)
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  members           HouseholdMember[]
+  users             User[]
+
+  @@map("households")
+}
+
+/// Local login account. One per household for now.
+model User {
+  id               String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  householdId      String?    @map("household_id") @db.Uuid
+  /// Stored lowercase; compared case-insensitively.
+  username         String     @unique
+  passwordHash     String     @map("password_hash")
+  failedLoginCount Int        @default(0) @map("failed_login_count")
+  lockedUntil      DateTime?  @map("locked_until") @db.Timestamptz(6)
+  lastLoginAt      DateTime?  @map("last_login_at") @db.Timestamptz(6)
+  createdAt        DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  household        Household? @relation(fields: [householdId], references: [id], onDelete: SetNull)
+  sessions         Session[]
+
+  @@index([householdId])
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// SHA-256 of the cookie token; the token itself is never stored.
+  tokenHash String   @unique @map("token_hash")
+  userId    String   @map("user_id") @db.Uuid
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model HouseholdMember {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  householdId         String    @map("household_id") @db.Uuid
+  name                String
+  birthYear           Int?      @map("birth_year")
+  dietaryRestrictions String[]  @default([]) @map("dietary_restrictions")
+  dislikes            String?
+  sortOrder           Int       @default(0) @map("sort_order")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  household           Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@index([householdId])
+  @@map("household_members")
+}
+
+model Store {
+  id             String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name           String             @unique
+  storeType      String?            @map("store_type")
+  active         Boolean            @default(true)
+  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  inventoryItems InventoryItem[]
+  purchases      Purchase[]
+  shoppingItems  ShoppingListItem[]
+
+  @@map("stores")
+}
+
+model GroceryCategory {
+  id            String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String             @unique
+  sortOrder     Int                @default(0) @map("sort_order")
+  createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  groceryItems  GroceryItem[]
+  purchaseItems PurchaseItem[]
+  shoppingItems ShoppingListItem[]
+
+  @@map("grocery_categories")
+}
+
+model GroceryItem {
+  id                    String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                  String
+  nameEn                String?                @map("name_en")
+  nameEs                String?                @map("name_es")
+  normalizedName        String                 @unique @map("normalized_name")
+  categoryId            String?                @map("category_id") @db.Uuid
+  defaultUnit           String?                @map("default_unit")
+  isPerishable          Boolean                @default(false) @map("is_perishable")
+  typicalShelfLifeDays  Int?                   @map("typical_shelf_life_days")
+  notes                 String?
+  createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  category              GroceryCategory?       @relation(fields: [categoryId], references: [id])
+  inventoryItems        InventoryItem[]
+  inventoryTransactions InventoryTransaction[]
+  recipeIngredients     RecipeIngredient[]
+  substitutionOriginals RecipeSubstitution[]   @relation("OriginalGroceryItem")
+  substitutionSwaps     RecipeSubstitution[]   @relation("SubstituteGroceryItem")
+  purchaseItems         PurchaseItem[]
+  shoppingItems         ShoppingListItem[]
+  cookedMealIngredients CookedMealIngredient[]
+
+  @@map("grocery_items")
+}
+
+model InventoryItem {
+  id                  String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  groceryItemId       String                 @map("grocery_item_id") @db.Uuid
+  quantity            Decimal?               @db.Decimal(10, 2)
+  unit                String?
+  quantityDescription String?                @map("quantity_description")
+  expirationDate      DateTime?              @map("expiration_date") @db.Date
+  location            InventoryLocation?
+  purchaseDate        DateTime?              @map("purchase_date") @db.Date
+  purchaseItemId      String?                @map("purchase_item_id") @db.Uuid
+  storeId             String?                @map("store_id") @db.Uuid
+  status              InventoryStatus        @default(available)
+  notes               String?
+  createdAt           DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+  groceryItem         GroceryItem            @relation(fields: [groceryItemId], references: [id])
+  purchaseItem        PurchaseItem?          @relation(fields: [purchaseItemId], references: [id], onDelete: SetNull)
+  store               Store?                 @relation(fields: [storeId], references: [id])
+  transactions        InventoryTransaction[]
+
+  @@index([expirationDate])
+  @@index([purchaseItemId])
+  @@index([status])
+  @@map("inventory_items")
+}
+
+model InventoryTransaction {
+  id              String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  inventoryItemId String?                     @map("inventory_item_id") @db.Uuid
+  groceryItemId   String                      @map("grocery_item_id") @db.Uuid
+  transactionType InventoryTransactionType    @map("transaction_type")
+  quantity        Decimal?                    @db.Decimal(10, 2)
+  unit            String?
+  source          InventoryTransactionSource?
+  notes           String?
+  createdAt       DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  inventoryItem   InventoryItem?              @relation(fields: [inventoryItemId], references: [id], onDelete: SetNull)
+  groceryItem     GroceryItem                 @relation(fields: [groceryItemId], references: [id])
+
+  @@index([createdAt])
+  @@map("inventory_transactions")
+}
+
+model RecipeTag {
+  id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String         @unique
+  description String?
+  recipes     RecipeTagMap[]
+
+  @@map("recipe_tags")
+}
+
+model Recipe {
+  id                    String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nameEn                String?              @map("name_en")
+  nameEs                String?              @map("name_es")
+  descriptionEn         String?              @map("description_en")
+  descriptionEs         String?              @map("description_es")
+  servings              Int                  @default(4)
+  prepTimeMinutes       Int?                 @map("prep_time_minutes")
+  cookTimeMinutes       Int?                 @map("cook_time_minutes")
+  source                String?
+  instructionsSummaryEn String?              @map("instructions_summary_en")
+  instructionsSummaryEs String?              @map("instructions_summary_es")
+  caloriesPerServing    Decimal?             @map("calories_per_serving") @db.Decimal(8, 2)
+  proteinGPerServing    Decimal?             @map("protein_g_per_serving") @db.Decimal(8, 2)
+  carbsGPerServing      Decimal?             @map("carbs_g_per_serving") @db.Decimal(8, 2)
+  fatGPerServing        Decimal?             @map("fat_g_per_serving") @db.Decimal(8, 2)
+  estimatedCost         Decimal?             @map("estimated_cost") @db.Decimal(10, 2)
+  isActive              Boolean              @default(true) @map("is_active")
+  createdAt             DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  ingredients           RecipeIngredient[]
+  steps                 RecipeStep[]
+  tags                  RecipeTagMap[]
+  substitutions         RecipeSubstitution[]
+  rating                RecipeRating?
+  mealPlanItems         MealPlanItem[]
+  cookedMeals           CookedMeal[]
+
+  @@index([isActive])
+  @@map("recipes")
+}
+
+model RecipeIngredient {
+  id                    String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recipeId              String                 @map("recipe_id") @db.Uuid
+  groceryItemId         String                 @map("grocery_item_id") @db.Uuid
+  quantity              Decimal?               @db.Decimal(10, 2)
+  unit                  String?
+  quantityDescription   String?                @map("quantity_description")
+  optional              Boolean                @default(false)
+  notesEn               String?                @map("notes_en")
+  notesEs               String?                @map("notes_es")
+  sortOrder             Int                    @default(0) @map("sort_order")
+  recipe                Recipe                 @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  groceryItem           GroceryItem            @relation(fields: [groceryItemId], references: [id])
+  cookedMealIngredients CookedMealIngredient[]
+
+  @@index([recipeId])
+  @@index([groceryItemId])
+  @@map("recipe_ingredients")
+}
+
+model RecipeStep {
+  id            String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recipeId      String  @map("recipe_id") @db.Uuid
+  stepNumber    Int     @map("step_number")
+  instructionEn String? @map("instruction_en")
+  instructionEs String? @map("instruction_es")
+  recipe        Recipe  @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@unique([recipeId, stepNumber])
+  @@map("recipe_steps")
+}
+
+model RecipeTagMap {
+  recipeId String    @map("recipe_id") @db.Uuid
+  tagId    String    @map("tag_id") @db.Uuid
+  recipe   Recipe    @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  tag      RecipeTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([recipeId, tagId])
+  @@map("recipe_tag_map")
+}
+
+model RecipeSubstitution {
+  id                      String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recipeId                String      @map("recipe_id") @db.Uuid
+  originalGroceryItemId   String      @map("original_grocery_item_id") @db.Uuid
+  substituteGroceryItemId String      @map("substitute_grocery_item_id") @db.Uuid
+  substitutionNoteEn      String?     @map("substitution_note_en")
+  substitutionNoteEs      String?     @map("substitution_note_es")
+  healthImprovement       Boolean     @default(false) @map("health_improvement")
+  createdAt               DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  recipe                  Recipe      @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  originalGroceryItem     GroceryItem @relation("OriginalGroceryItem", fields: [originalGroceryItemId], references: [id])
+  substituteGroceryItem   GroceryItem @relation("SubstituteGroceryItem", fields: [substituteGroceryItemId], references: [id])
+
+  @@index([recipeId])
+  @@map("recipe_substitutions")
+}
+
+model RecipeRating {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recipeId       String   @unique @map("recipe_id") @db.Uuid
+  rating         Int?
+  wouldCookAgain Boolean? @map("would_cook_again")
+  notes          String?
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  recipe         Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@map("recipe_ratings")
+}
+
+model MealPlan {
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  weekStartDate DateTime       @map("week_start_date") @db.Date
+  status        MealPlanStatus @default(draft)
+  notes         String?
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  items         MealPlanItem[]
+  shoppingLists ShoppingList[]
+
+  @@index([status, weekStartDate])
+  @@map("meal_plans")
+}
+
+model MealPlanItem {
+  id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  mealPlanId      String             @map("meal_plan_id") @db.Uuid
+  recipeId        String             @map("recipe_id") @db.Uuid
+  plannedDate     DateTime           @map("planned_date") @db.Date
+  mealType        MealType           @default(dinner) @map("meal_type")
+  servingsPlanned Int                @default(4) @map("servings_planned")
+  status          MealPlanItemStatus @default(planned)
+  notes           String?
+  createdAt       DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  mealPlan        MealPlan           @relation(fields: [mealPlanId], references: [id], onDelete: Cascade)
+  recipe          Recipe             @relation(fields: [recipeId], references: [id])
+  cookedMeals     CookedMeal[]
+
+  @@unique([mealPlanId, plannedDate, mealType])
+  @@index([mealPlanId])
+  @@index([recipeId])
+  @@map("meal_plan_items")
+}
+
+model ShoppingList {
+  id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  mealPlanId      String?            @map("meal_plan_id") @db.Uuid
+  name            String
+  status          ShoppingListStatus @default(draft)
+  targetStartDate DateTime?          @map("target_start_date") @db.Date
+  targetEndDate   DateTime?          @map("target_end_date") @db.Date
+  createdAt       DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  completedAt     DateTime?          @map("completed_at") @db.Timestamptz(6)
+  mealPlan        MealPlan?          @relation(fields: [mealPlanId], references: [id], onDelete: SetNull)
+  items           ShoppingListItem[]
+
+  @@index([status, createdAt])
+  @@index([mealPlanId])
+  @@map("shopping_lists")
+}
+
+model ShoppingListItem {
+  id                     String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  shoppingListId         String           @map("shopping_list_id") @db.Uuid
+  groceryItemId          String?          @map("grocery_item_id") @db.Uuid
+  customItemName         String?          @map("custom_item_name")
+  neededQuantity         Decimal?         @map("needed_quantity") @db.Decimal(10, 2)
+  haveQuantity           Decimal?         @map("have_quantity") @db.Decimal(10, 2)
+  buyQuantity            Decimal?         @map("buy_quantity") @db.Decimal(10, 2)
+  unit                   String?
+  categoryId             String?          @map("category_id") @db.Uuid
+  preferredStoreId       String?          @map("preferred_store_id") @db.Uuid
+  checked                Boolean          @default(false)
+  convertedToInventoryAt DateTime?        @map("converted_to_inventory_at") @db.Timestamptz(6)
+  isExtraItem            Boolean          @default(false) @map("is_extra_item")
+  notes                  String?
+  createdAt              DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  shoppingList           ShoppingList     @relation(fields: [shoppingListId], references: [id], onDelete: Cascade)
+  groceryItem            GroceryItem?     @relation(fields: [groceryItemId], references: [id])
+  category               GroceryCategory? @relation(fields: [categoryId], references: [id])
+  preferredStore         Store?           @relation(fields: [preferredStoreId], references: [id])
+
+  @@index([shoppingListId])
+  @@index([checked])
+  @@map("shopping_list_items")
+}
+
+model CookedMeal {
+  id             String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recipeId       String                 @map("recipe_id") @db.Uuid
+  mealPlanItemId String?                @map("meal_plan_item_id") @db.Uuid
+  cookedAt       DateTime               @default(now()) @map("cooked_at") @db.Timestamptz(6)
+  servingsCooked Int                    @map("servings_cooked")
+  notes          String?
+  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  recipe         Recipe                 @relation(fields: [recipeId], references: [id])
+  mealPlanItem   MealPlanItem?          @relation(fields: [mealPlanItemId], references: [id], onDelete: SetNull)
+  ingredients    CookedMealIngredient[]
+
+  @@index([cookedAt])
+  @@index([recipeId])
+  @@index([mealPlanItemId])
+  @@map("cooked_meals")
+}
+
+model CookedMealIngredient {
+  id                 String                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cookedMealId       String                          @map("cooked_meal_id") @db.Uuid
+  recipeIngredientId String?                         @map("recipe_ingredient_id") @db.Uuid
+  groceryItemId      String                          @map("grocery_item_id") @db.Uuid
+  ingredientName     String                          @map("ingredient_name")
+  requestedQuantity  Decimal?                        @map("requested_quantity") @db.Decimal(10, 2)
+  requestedUnit      String?                         @map("requested_unit")
+  deductedQuantity   Decimal?                        @map("deducted_quantity") @db.Decimal(10, 2)
+  deductionStatus    CookedIngredientDeductionStatus @map("deduction_status")
+  notes              String?
+  createdAt          DateTime                        @default(now()) @map("created_at") @db.Timestamptz(6)
+  cookedMeal         CookedMeal                      @relation(fields: [cookedMealId], references: [id], onDelete: Cascade)
+  recipeIngredient   RecipeIngredient?               @relation(fields: [recipeIngredientId], references: [id], onDelete: SetNull)
+  groceryItem        GroceryItem                     @relation(fields: [groceryItemId], references: [id])
+
+  @@index([cookedMealId])
+  @@index([deductionStatus])
+  @@map("cooked_meal_ingredients")
+}
+
+model Purchase {
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  storeId         String?        @map("store_id") @db.Uuid
+  purchaseDate    DateTime       @default(now()) @map("purchase_date") @db.Date
+  totalAmount     Decimal?       @map("total_amount") @db.Decimal(10, 2)
+  purchaseType    PurchaseType   @default(grocery) @map("purchase_type")
+  receiptImageUrl String?        @map("receipt_image_url")
+  notes           String?
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  store           Store?         @relation(fields: [storeId], references: [id], onDelete: SetNull)
+  items           PurchaseItem[]
+
+  @@index([purchaseDate])
+  @@index([purchaseType, purchaseDate])
+  @@index([storeId])
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  purchaseId       String           @map("purchase_id") @db.Uuid
+  groceryItemId    String?          @map("grocery_item_id") @db.Uuid
+  itemName         String?          @map("item_name")
+  quantity         Decimal?         @db.Decimal(10, 2)
+  unit             String?
+  unitPrice        Decimal?         @map("unit_price") @db.Decimal(10, 2)
+  totalPrice       Decimal?         @map("total_price") @db.Decimal(10, 2)
+  categoryId       String?          @map("category_id") @db.Uuid
+  addedToInventory Boolean          @default(false) @map("added_to_inventory")
+  notes            String?
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  purchase         Purchase         @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  groceryItem      GroceryItem?     @relation(fields: [groceryItemId], references: [id], onDelete: SetNull)
+  category         GroceryCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  inventoryItems   InventoryItem[]
+
+  @@index([categoryId])
+  @@index([groceryItemId])
+  @@index([purchaseId])
+  @@map("purchase_items")
+}

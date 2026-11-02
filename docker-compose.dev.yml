@@ -1,0 +1,25 @@
+# Development overrides: live reload with the source mounted from your machine.
+#
+#   npm run docker:dev
+#   (same as: docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build)
+
+services:
+  app:
+    image: mercadito:dev
+    build:
+      target: development
+    command: sh -c "npx prisma generate && npx prisma migrate deploy && npx tsx prisma/seed.ts && npm run dev"
+    restart: "no"
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+      - next_cache:/app/.next
+
+  postgres:
+    ports:
+      # Lets tools on your machine (Prisma Studio, psql) reach the dev database.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+
+volumes:
+  node_modules:
+  next_cache:

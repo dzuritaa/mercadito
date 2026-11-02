@@ -1,0 +1,15 @@
+node_modules
+.next
+.git
+.github
+.env
+.env*
+!.env.example
+npm-debug.log
+docs
+*.md
+.npm-cache
+.playwright-cli
+.codex
+.agents
+tsconfig.tsbuildinfo
