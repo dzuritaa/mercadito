@@ -758,6 +758,7 @@ export const en = {
     noteNoExact: "No exact quantity and unit; adjust inventory manually if used.",
     noteNoInventory:
       "No exact matching inventory was available; adjust inventory manually if needed.",
+    notePartial: (amount: string) => `Only ${amount} was available with the exact unit.`,
     transactionNote: (recipe: string) => `Cooked ${recipe}`,
     cookedResult: (deducted: number, review: number) => {
       const base = `Recipe cooked: ${deducted} ${plural(deducted, "ingredient", "ingredients")} deducted`;

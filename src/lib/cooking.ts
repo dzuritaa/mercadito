@@ -188,11 +188,7 @@ async function deductIngredient(
   if (deductedQuantity.lessThan(requestedQuantity)) {
     return {
       deductedQuantity,
-      notes: `Only ${formatRecipeQuantity(
-        deductedQuantity,
-        requestedUnit,
-        null
-      )} was available from exact inventory.`,
+      notes: t.cooking.notePartial(formatRecipeQuantity(deductedQuantity, requestedUnit, null, t)),
       requestedQuantity,
       requestedUnit,
       status: "partial" as DeductionStatus

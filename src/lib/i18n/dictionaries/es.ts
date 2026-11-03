@@ -779,6 +779,7 @@ export const es: Dictionary = {
     noteNoExact: "Sin cantidad y unidad exactas; ajusta la despensa a mano si se usó.",
     noteNoInventory:
       "No había un producto con la unidad exacta; ajusta la despensa a mano si hace falta.",
+    notePartial: (amount: string) => `Solo había ${amount} con la unidad exacta.`,
     transactionNote: (recipe: string) => `Se cocinó ${recipe}`,
     cookedResult: (deducted: number, review: number) => {
       const base = `Receta cocinada: ${deducted} ${plural(deducted, "ingrediente descontado", "ingredientes descontados")}`;

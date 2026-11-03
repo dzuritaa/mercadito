@@ -21,6 +21,35 @@ jobs:
       - run: npx tsc --noEmit
       - run: npm run build
 
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: mercadito
+          POSTGRES_PASSWORD: mercadito
+          POSTGRES_DB: mercadito_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mercadito -d mercadito_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://mercadito:mercadito@localhost:5432/mercadito_test?schema=public
+      # A non-UTC zone catches date bugs (calendar dates are stored as UTC).
+      TZ: America/Guayaquil
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm test
+
   docker:
     name: Production image
     runs-on: ubuntu-latest

@@ -15,7 +15,9 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:seed-demo": "tsx prisma/seed-demo.ts",
     "typecheck": "prisma generate && tsc --noEmit",
-    "docker:dev": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build"
+    "docker:dev": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@prisma/client": "^6.9.0",
@@ -34,7 +36,8 @@
     "eslint": "^9.28.0",
     "eslint-config-next": "^15.3.3",
     "tailwindcss": "^4.1.8",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^5.1.0"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
